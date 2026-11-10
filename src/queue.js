@@ -88,7 +88,12 @@ export function claimNextJob(db, { now, leaseMs, owner }) {
       .run(owner, now + leaseMs, now, candidate.id, now, now);
     if (info.changes !== 1) return null;
 
-    return { ...candidate, attempts: candidate.attempts + 1, lease_owner: owner };
+    return {
+      ...candidate,
+      state: 'processing',
+      attempts: candidate.attempts + 1,
+      lease_owner: owner,
+    };
   });
 }
 

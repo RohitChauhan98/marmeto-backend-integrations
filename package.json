@@ -8,7 +8,7 @@
     "dev": "node scripts/dev.js",
     "start": "node src/main.js",
     "worker": "node src/worker-main.js",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.js\"",
     "send-webhook": "node scripts/send-webhook.js",
     "reconcile": "node scripts/reconcile.js",
     "dead-letter": "node scripts/dead-letter.js"

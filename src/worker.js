@@ -81,6 +81,14 @@ export function createWorker(db, config, courier, { nowFn = Date.now, sleep = de
       return completeJob(db, job, nowFn(), `shipment ${shipmentId} confirmed (${outcome})`);
     }
     if (res.kind === 'retry_after') {
+      // The courier responded, so nothing was created: a retry is safe.
+      updateShipmentState(
+        db,
+        job.order_id,
+        SHIPMENT_STATES.LOOKUP_EMPTY,
+        `rate limited (429); honoring Retry-After=${res.retryAfterMs}ms`,
+        now
+      );
       // Honor Retry-After exactly; never retry earlier than requested.
       return scheduleJobRetry(db, job, {
         nextAttemptAt: nowFn() + res.retryAfterMs,
@@ -89,6 +97,13 @@ export function createWorker(db, config, courier, { nowFn = Date.now, sleep = de
       });
     }
     if (res.kind === 'retryable') {
+      updateShipmentState(
+        db,
+        job.order_id,
+        SHIPMENT_STATES.LOOKUP_EMPTY,
+        `create attempt #${job.attempts} rejected by courier: ${res.message} (status ${res.status}); nothing was created`,
+        now
+      );
       return scheduleJobRetry(db, job, {
         delayMs: computeRetryDelayMs(config, job.attempts),
         note: `${res.message} (status ${res.status})`,
