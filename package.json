@@ -1,0 +1,31 @@
+{
+  "name": "marmeto-backend-integrations",
+  "version": "1.0.0",
+  "description": "Receives Shopify-style orders/create webhooks and creates shipments through an unreliable courier API.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "start": "node src/main.js",
+    "worker": "node src/worker-main.js",
+    "test": "node --test test/",
+    "send-webhook": "node scripts/send-webhook.js",
+    "reconcile": "node scripts/reconcile.js",
+    "dead-letter": "node scripts/dead-letter.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "shopify",
+    "webhook",
+    "queue",
+    "courier",
+    "sqlite"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "express": "^4.21.2"
+  }
+}
