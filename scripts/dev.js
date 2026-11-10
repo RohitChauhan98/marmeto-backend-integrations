@@ -58,6 +58,8 @@ function shutdown(exitCode = 0) {
 
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
+// Some terminals / wrappers lose the process group on HUP.
+process.on('SIGHUP', () => shutdown(0));
 
 console.log('[dev] starting mock courier, webhook server, and worker');
 start('mock-courier', ['scripts/mock-courier.js']);
