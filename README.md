@@ -14,69 +14,77 @@ API — safely, despite duplicates, retries, timeouts, crashes, and restarts.
                      scripts/reconcile.js — periodic sweep for unconfirmed orders via courier lookup
 ```
 
+
+
 ## Project overview
 
 - **POST /webhooks/orders-create** verifies the `X-Shop-Hmac-Sha256` header
-  (base64 HMAC-SHA256 over the exact raw request body, `SHOPIFY_WEBHOOK_SECRET`),
-  validates the payload, and persists the order + one shipment workflow job
-  inside a single SQLite transaction before acknowledging. It responds in
-  well under a second and never waits for courier work.
+(base64 HMAC-SHA256 over the exact raw request body, `SHOPIFY_WEBHOOK_SECRET`),
+validates the payload, and persists the order + one shipment workflow job
+inside a single SQLite transaction before acknowledging. It responds in
+well under a second and never waits for courier work.
 - **A persistent SQLite queue** (same database file) drives one coordinated
-  shipment workflow per order, with leases, attempt counts, scheduled
-  retries, and a dead-letter state. It survives restarts.
+shipment workflow per order, with leases, attempt counts, scheduled
+retries, and a dead-letter state. It survives restarts.
 - **A background worker** claims jobs atomically, calls the courier client,
-  and runs the orchestration state machine (create → ambiguity recovery →
-  confirm/dead-letter).
+and runs the orchestration state machine (create → ambiguity recovery →
+confirm/dead-letter).
 - **scripts/mock-courier.js** simulates the courier: 20% HTTP 500, 10% HTTP
-  429 with `Retry-After: 2`, 10% create-then-delay-10s (timeout), rest instant
-  success. Every creation produces a new shipment id; duplicate references
-  are allowed (the courier is deliberately non-idempotent). Deterministic
-  failure injection via `MOCK_COURIER_MODE` / `X-Test-Fail-Mode` is available
-  for tests without changing the default probabilistic behavior.
+429 with `Retry-After: 2`, 10% create-then-delay-10s (timeout), rest instant
+success. Every creation produces a new shipment id; duplicate references
+are allowed (the courier is deliberately non-idempotent). Deterministic
+failure injection via `MOCK_COURIER_MODE` / `X-Test-Fail-Mode` is available
+for tests without changing the default probabilistic behavior.
 - **scripts/reconcile.js** sweeps orders without confirmed shipments and
-  recovers them through courier lookups. **scripts/dead-letter.js** inspects
-  and safely replays failed jobs.
+recovers them through courier lookups. **scripts/dead-letter.js** inspects
+and safely replays failed jobs.
 - **Operations dashboard (frontend)** — a no-build static HTML/CSS/JS app in
-  `public/` served by the webhook server at `http://localhost:4550/`. It shows
-  live stats (orders, confirmed/uncertain shipments, pending/retrying/dead
-  jobs), lets you fire the four signed-webhook scenarios, switch the mock
-  courier's failure mode at runtime (chaos panel), trigger reconciliation,
-  watch every order's workflow state, and replay dead-lettered jobs with one
-  click.
+`public/` served by the webhook server at `http://localhost:4550/`. It shows
+live stats (orders, confirmed/uncertain shipments, pending/retrying/dead
+jobs), lets you fire the four signed-webhook scenarios, switch the mock
+courier's failure mode at runtime (chaos panel), trigger reconciliation,
+watch every order's workflow state, and replay dead-lettered jobs with one
+click.
+
+
 
 ## Prerequisites & installation
 
 - Node.js ≥ 20 (tested on Node 24). No external services — SQLite is embedded.
-  (`better-sqlite3` ships prebuilt binaries; nothing else is required.)
+(`better-sqlite3` ships prebuilt binaries; nothing else is required.)
 
 ```bash
 npm install
 ```
+
+
 
 ## Environment configuration
 
 Copy `.env.example` to `.env` and adjust as needed. All values are
 environment variables with sensible defaults, so a plain `npm run dev` works.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `WEBHOOK_SERVER_PORT` | `4550` | HTTP server port |
-| `MOCK_COURIER_PORT` | `4600` | Mock courier port |
-| `MOCK_COURIER_MODE` | *(unset → probabilistic)* | deterministic mode: `success` \| `error_500` \| `rate_limit_429` \| `timeout_wait` |
-| `MOCK_COURIER_RETRY_AFTER_MS` | `2000` | Retry-After value sent by the mock on 429 |
-| `MOCK_COURIER_TIMEOUT_DELAY_MS` | `10000` | response delay in the timeout scenario |
-| `MOCK_COURIER_DATA_PATH` | `./data/mock-courier-shipments.json` | mock courier persistence |
-| `SHOPIFY_WEBHOOK_SECRET` | `dev-secret-change-me` | HMAC shared secret (set a real one in production) |
-| `DATABASE_PATH` | `./data/app.db` | shared SQLite path (server + worker) |
-| `COURIER_BASE_URL` | `http://localhost:4600` | courier API base URL |
-| `COURIER_TIMEOUT_MS` | `5000` | per-request `AbortController` timeout |
-| `COURIER_MAX_ATTEMPTS` | `5` | attempt budget before `dead_letter` |
-| `COURIER_RETRY_BASE_DELAY_MS` | `500` | exponential backoff base |
-| `COURIER_RETRY_MAX_DELAY_MS` | `30000` | backoff cap (jitter is additive) |
-| `COURIER_RETRY_JITTER_MS` | `250` | random jitter range added to each backoff |
-| `WORKER_POLL_INTERVAL_MS` | `1000` | idle poll interval |
-| `WORKER_LEASE_MS` | `60000` | processing lease; expired leases are recovered |
-| `UNCERTAINTY_DELAY_MS` | `5000` | wait after an ambiguous timeout before acting again |
+
+| Variable                        | Default                              | Purpose                                                                         |
+| ------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| `WEBHOOK_SERVER_PORT`           | `4550`                               | HTTP server port                                                                |
+| `MOCK_COURIER_PORT`             | `4600`                               | Mock courier port                                                               |
+| `MOCK_COURIER_MODE`             | *(unset → probabilistic)*            | deterministic mode: `success` | `error_500` | `rate_limit_429` | `timeout_wait` |
+| `MOCK_COURIER_RETRY_AFTER_MS`   | `2000`                               | Retry-After value sent by the mock on 429                                       |
+| `MOCK_COURIER_TIMEOUT_DELAY_MS` | `10000`                              | response delay in the timeout scenario                                          |
+| `MOCK_COURIER_DATA_PATH`        | `./data/mock-courier-shipments.json` | mock courier persistence                                                        |
+| `SHOPIFY_WEBHOOK_SECRET`        | `dev-secret-change-me`               | HMAC shared secret (set a real one in production)                               |
+| `DATABASE_PATH`                 | `./data/app.db`                      | shared SQLite path (server + worker)                                            |
+| `COURIER_BASE_URL`              | `http://localhost:4600`              | courier API base URL                                                            |
+| `COURIER_TIMEOUT_MS`            | `5000`                               | per-request `AbortController` timeout                                           |
+| `COURIER_MAX_ATTEMPTS`          | `5`                                  | attempt budget before `dead_letter`                                             |
+| `COURIER_RETRY_BASE_DELAY_MS`   | `500`                                | exponential backoff base                                                        |
+| `COURIER_RETRY_MAX_DELAY_MS`    | `30000`                              | backoff cap (jitter is additive)                                                |
+| `COURIER_RETRY_JITTER_MS`       | `250`                                | random jitter range added to each backoff                                       |
+| `WORKER_POLL_INTERVAL_MS`       | `1000`                               | idle poll interval                                                              |
+| `WORKER_LEASE_MS`               | `60000`                              | processing lease; expired leases are recovered                                  |
+| `UNCERTAINTY_DELAY_MS`          | `5000`                               | wait after an ambiguous timeout before acting again                             |
+
 
 The database is created and migrated automatically on first use.
 
@@ -89,21 +97,25 @@ npm run dev
 # Ctrl+C tears everything down cleanly
 ```
 
+
+
 ## Operations dashboard (frontend)
 
 Open `http://localhost:4550/` while `npm run dev` is running. No build step —
 plain `public/index.html` + `public/app.js` + `public/style.css` polling a
 small admin API every 2 seconds:
 
-| UI element | Backing endpoint | What it demonstrates |
-| --- | --- | --- |
-| Health dots | `GET /admin/api/overview` | server + courier reachability, live counters |
-| "Simulate Shopify webhooks" buttons | `POST /admin/api/send-webhook` | the four HMAC scenarios (valid / duplicate / same-order-new-webhook-id / invalid) delivered through the real signed pipeline |
-| Courier chaos buttons | `POST /admin/api/courier/mode` | runtime switching of the mock courier's deterministic failure mode (`error_500`, `rate_limit_429`, `timeout_wait`) without restarting anything |
-| "Run reconciliation now" | `POST /admin/api/reconcile` | the recovery sweep with its printed summary |
-| Orders table | `GET /admin/api/orders` | per-order shipment status, courier shipment id, job state, attempts, next attempt, last error |
-| Dead letters table | `GET /admin/api/dead-letters`, `POST /admin/api/jobs/:id/replay` | inspect and one-click replay (reuses the same workflow row) |
-| Deliveries table | `GET /admin/api/orders` | recent webhook ids accepted |
+
+| UI element                          | Backing endpoint                                                 | What it demonstrates                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health dots                         | `GET /admin/api/overview`                                        | server + courier reachability, live counters                                                                                                   |
+| "Simulate Shopify webhooks" buttons | `POST /admin/api/send-webhook`                                   | the four HMAC scenarios (valid / duplicate / same-order-new-webhook-id / invalid) delivered through the real signed pipeline                   |
+| Courier chaos buttons               | `POST /admin/api/courier/mode`                                   | runtime switching of the mock courier's deterministic failure mode (`error_500`, `rate_limit_429`, `timeout_wait`) without restarting anything |
+| "Run reconciliation now"            | `POST /admin/api/reconcile`                                      | the recovery sweep with its printed summary                                                                                                    |
+| Orders table                        | `GET /admin/api/orders`                                          | per-order shipment status, courier shipment id, job state, attempts, next attempt, last error                                                  |
+| Dead letters table                  | `GET /admin/api/dead-letters`, `POST /admin/api/jobs/:id/replay` | inspect and one-click replay (reuses the same workflow row)                                                                                    |
+| Deliveries table                    | `GET /admin/api/orders`                                          | recent webhook ids accepted                                                                                                                    |
+
 
 The courier control plane (`POST /_test/mode`) exists only when the mock
 courier is started with `MOCK_COURIER_CONTROL=1` (set automatically by
@@ -136,6 +148,34 @@ exact bytes sent (the service re-serializes nothing). Duplicate deliveries
 Responses: `401` missing/malformed/invalid signature; `400` invalid JSON,
 invalid payload, or missing webhook id; `200` otherwise.
 
+## Testing with a real Shopify store
+
+The service accepts both header spellings — the assignment spec
+(`X-Shop-Hmac-Sha256` / `X-Shop-Webhook-Id`) and real Shopify's
+(`X-Shopify-Hmac-Sha256` / `X-Shopify-Webhook-Id`) — so it can be pointed at
+an actual Shopify development store without changes:
+
+1. Create a free Shopify Partner account and a development store
+   (partners.shopify.com → Stores → Add store → Development store).
+2. Expose your local server with a tunnel:
+   `npx localtunnel --port 4550` (or `ngrok http 4550`) and copy the public
+   HTTPS URL.
+3. In the store admin: **Settings → Notifications → Webhooks → Create
+   webhook**, choose **Order creation**, format **JSON**, and paste
+   `<tunnel-url>/webhooks/orders-create`. After saving, copy the **signing
+   secret** shown for that webhook.
+4. Put the secret in `.env` as `SHOPIFY_WEBHOOK_SECRET=<copied-secret>` and
+   restart `npm run dev`.
+5. Place a test order in the development store (enable test payments /
+   Bogus Gateway). Shopify signs the raw body with that secret; the order
+   appears in the dashboard (`http://localhost:4550/`) and the shipment is
+   created through the courier.
+
+Notes: Shopify retries failed deliveries and may redeliver — both are
+handled by the webhook-id/order-id idempotency. Shopify requires a 2xx
+response within a few seconds; the service always acknowledges immediately
+after persistence, never after courier work.
+
 ## Signed webhook and duplicate-delivery commands
 
 ```bash
@@ -148,31 +188,33 @@ npm run send-webhook -- invalid --seed s1          # correctly formatted but wro
 # the script reads SHOPIFY_WEBHOOK_SECRET from the environment (or .env)
 ```
 
+
+
 ## Database design and idempotency constraints
 
 Tables (single shared SQLite database, WAL mode):
 
 - **orders** — `id PRIMARY KEY`, payload, shipping address, line items.
 - **webhook_deliveries** — `webhook_id PRIMARY KEY`, order id, status,
-  received_at; indexes on order id.
+received_at; indexes on order id.
 - **shipments** — `order_id PRIMARY KEY` (one row per order), status
-  (`pending → processing → uncertain / lookup_empty → confirmed | failed`),
-  courier shipment id, detail notes, confirmed_at.
+(`pending → processing → uncertain / lookup_empty → confirmed | failed`),
+courier shipment id, detail notes, confirmed_at.
 - **jobs** — `id PRIMARY KEY`, type (`shipment`), unique index on
-  `(order_id, type)` ⇒ one coordinated workflow per order; state
-  (`pending / processing / retrying / completed / dead_letter`), attempts,
-  max_attempts, `next_attempt_at`, `lease_owner`, `lease_expires_at`,
-  `last_error`, `error_history` (full JSON attempt log), timestamps; index on
-  `(state, next_attempt_at)`.
+`(order_id, type)` ⇒ one coordinated workflow per order; state
+(`pending / processing / retrying / completed / dead_letter`), attempts,
+max_attempts, `next_attempt_at`, `lease_owner`, `lease_expires_at`,
+`last_error`, `error_history` (full JSON attempt log), timestamps; index on
+`(state, next_attempt_at)`.
 
 Both idempotency scenarios are enforced by database constraints inside one
 `BEGIN IMMEDIATE` transaction per delivery (full synchronous, so concurrent
 HTTP requests cannot interleave):
 
 1. *Same webhook id twice*: `INSERT ... ON CONFLICT(webhook_id) DO NOTHING`
-   on `webhook_deliveries` returns 0 changes → duplicate ack, no new work.
+  on `webhook_deliveries` returns 0 changes → duplicate ack, no new work.
 2. *Same order id, different webhook id*: `INSERT OR IGNORE` into `orders`
-   hits the primary key → duplicate ack, no new work.
+  hits the primary key → duplicate ack, no new work.
    `jobs(order_id, type)` is additionally UNIQUE, so even a bug elsewhere
    could never persist two shipment workflows for one order.
 
@@ -184,38 +226,42 @@ never reset or overwrite an already-confirmed shipment.
 ## Queue design and its trade-offs
 
 - Jobs live in SQLite — no broker infrastructure, survives restarts by
-  construction, cheap reads/writes, transactional with the rest of the
-  domain data. Trade-off: fine for this scale; a production rollout would use
-  a real queue (SQS/BullMQ) for horizontal scaling, visibility timeouts
-  independent of the database, and fan-out.
+construction, cheap reads/writes, transactional with the rest of the
+domain data. Trade-off: fine for this scale; a production rollout would use
+a real queue (SQS/BullMQ) for horizontal scaling, visibility timeouts
+independent of the database, and fan-out.
 - Claiming is an atomic `SELECT + guarded UPDATE` inside a transaction with
-  the eligibility conditions (`pending/retrying` due → `processing` with
-  expired lease) embedded in the UPDATE's WHERE clause, so two workers can
-  never claim the same job.
+the eligibility conditions (`pending/retrying` due → `processing` with
+expired lease) embedded in the UPDATE's WHERE clause, so two workers can
+never claim the same job.
 - Leases: workers stamp `lease_owner`/`lease_expires_at`; reclaim is only
-  legal past expiry; all end-of-attempt writes are conditional on still
-  owning the lease, so stale workers cannot corrupt state. The lease is
-  extended to ≥ 3× the courier timeout before any network call.
+legal past expiry; all end-of-attempt writes are conditional on still
+owning the lease, so stale workers cannot corrupt state. The lease is
+extended to ≥ 3× the courier timeout before any network call.
 - Network requests never happen inside transactions; workers never sleep on
-  behalf of a job — the wait is persisted as `next_attempt_at` (the poll loop
-  picks something else up meanwhile).
+behalf of a job — the wait is persisted as `next_attempt_at` (the poll loop
+picks something else up meanwhile).
 - Completed jobs remain in the table for auditing; the unique index is on
-  `(order_id, type)`, not on state, so replays must reuse the same row (they
-  do).
+`(order_id, type)`, not on state, so replays must reuse the same row (they
+do).
+
+
 
 ## Retry, backoff, timeout, and rate-limit behavior
 
 The courier client (`src/courier.js`) performs exactly one HTTP request per
 attempt with an `AbortController` timeout and classifies the outcome:
 
-| Outcome | Meaning | Action |
-| --- | --- | --- |
-| 2xx | created / list returned | confirm shipment, complete job |
-| `429` | rate limited | schedules a retry **no earlier than `Retry-After`** (seconds or HTTP-date; missing/invalid/absurd → safe fallback of `max(base, 1s)`); job goes to `retrying` with the persisted wait |
-| `5xx` | courier error, nothing created | exponential backoff `base·2^(attempts-1)` capped at `max`, plus jitter |
-| other 4xx | courier refused (fatal) | shipment `failed`, job `dead_letter` |
-| timeout / connection died mid-flight | **ambiguous** — the shipment may exist | shipment `uncertain`, schedule a recovery lookup after `UNCERTAINTY_DELAY_MS` |
-| connection refused / DNS error | request never reached the courier | plain retryable (not ambiguous): backoff |
+
+| Outcome                              | Meaning                                | Action                                                                                                                                                                                |
+| ------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2xx                                  | created / list returned                | confirm shipment, complete job                                                                                                                                                        |
+| `429`                                | rate limited                           | schedules a retry **no earlier than** `Retry-After` (seconds or HTTP-date; missing/invalid/absurd → safe fallback of `max(base, 1s)`); job goes to `retrying` with the persisted wait |
+| `5xx`                                | courier error, nothing created         | exponential backoff `base·2^(attempts-1)` capped at `max`, plus jitter                                                                                                                |
+| other 4xx                            | courier refused (fatal)                | shipment `failed`, job `dead_letter`                                                                                                                                                  |
+| timeout / connection died mid-flight | **ambiguous** — the shipment may exist | shipment `uncertain`, schedule a recovery lookup after `UNCERTAINTY_DELAY_MS`                                                                                                         |
+| connection refused / DNS error       | request never reached the courier      | plain retryable (not ambiguous): backoff                                                                                                                                              |
+
 
 Attempt counting spans the whole workflow (create attempts and recovery
 lookups share the same budget, one per claim). The final failure moves the
@@ -227,12 +273,12 @@ preserved.
 A timeout is never treated as "not created". After an ambiguous outcome:
 
 1. shipment status becomes `uncertain` and a recovery lookup is scheduled
-   after the uncertainty window;
+  after the uncertainty window;
 2. the worker runs `GET /shipments?reference=<orderId>`;
 3. found → adopt the courier shipment id (earliest created if several),
-   mark confirmed, complete the job;
+  mark confirmed, complete the job;
 4. none found → the wait continues (status `lookup_empty`) and a fresh
-   create attempt is scheduled after the uncertainty window — the grace
+  create attempt is scheduled after the uncertainty window — the grace
    period is what makes it reasonable that the earlier ambiguous request
    has fully resolved;
 5. lookup failed → keep `uncertain`, retry recovery later with backoff.
@@ -302,15 +348,15 @@ in-memory databases and small injected timing values. Covered scenarios:
 9. timeout-after-creation → existing shipment recovered, `POST` count stays 1
 10. late success responses cannot overwrite a concurrent confirmation
 11. reconciliation recovers existing shipments (and executes safely when run
-    concurrently with the worker)
+  concurrently with the worker)
 12. repeated reconciliation creates no duplicate jobs/shipments and never
-    POSTs
+  POSTs
 13. dead-letter replay is safe (same workflow, confirmed-state no-op)
 14. worker crash after claim (expired lease) → job recovered, completes once
 15. worker crash mid-POST → ambiguity later resolved via lookup
 16. courier client unit behavior: classification, Retry-After parsing
 17. dashboard API: overview/orders pages, signed send-webhook actions,
-    reconcile action, dead-letter replay over HTTP, courier runtime mode
+  reconcile action, dead-letter replay over HTTP, courier runtime mode
     control (dev-only)
 
 (`npm run test` uses the glob `test/**/*.test.js`; helpers live in
@@ -318,68 +364,57 @@ in-memory databases and small injected timing values. Covered scenarios:
 
 ## Design decisions
 
-- **Synchronous SQLite (`better-sqlite3`) transactions**: webhook
-  idempotency demands "check & insert atomically"; synchronous transactions
-  make that statically free of interleaving bugs inside one process, and WAL
-  mode supports safe multi-process sharing (server + worker).
+- **Synchronous SQLite (**`better-sqlite3`**) transactions**: webhook
+idempotency demands "check & insert atomically"; synchronous transactions
+make that statically free of interleaving bugs inside one process, and WAL
+mode supports safe multi-process sharing (server + worker).
 - **Database-constraint idempotency** instead of check-then-act queries: the
-  PK/unique indexes are the last line of defense; the app logic is only a
-  fast path.
+PK/unique indexes are the last line of defense; the app logic is only a
+fast path.
 - **Queue in SQLite** — smallest reliable primitive for the assignment scale
-  with crash recovery via leases.
+with crash recovery via leases.
 - **One workflow job per order** — retries, replays, and reconciliation all
-  manipulate the same row, so no path can create a second workflow.
+manipulate the same row, so no path can create a second workflow.
 - **Classification-first courier client** — a single attempt per call plus a
-  persistent queue for waits, instead of in-process retry loops: the wait
-  survives restarts, never blocks the worker, and Retry-After windows are
-  persisted.
+persistent queue for waits, instead of in-process retry loops: the wait
+survives restarts, never blocks the worker, and Retry-After windows are
+persisted.
 - **Ambiguous-timeout lookup protocol** — the only way to be safe against a
-  non-idempotent courier is to consult it after uncertainty rather than
-  blindly re-POST.
-- **Raw-body HMAC verification** with strict header/lens checks before
-  `timingSafeEqual`.
-
-## What I would improve with another day
-
-- Real broker behind the same interface (SQS/BullMQ) and horizontal worker
-  scaling.
-- Prometheus/OpenTelemetry metrics + structured logs and alerting on
-  dead-letter arrivals and `uncertain` backlog age.
-- Authentication and RBAC for the dashboard/admin API (currently a local
-  demo surface), plus an SSE/WebSocket feed instead of polling.
-- Property/chaos tests: random fault sequences, concurrent reconcilers,
-  crash-at-every-await fuzzing.
-- A Shopify `/webhooks` topics fan-out layer and subscription management.
-- Fix the remaining lookup-vs-POST race by requiring courier-side
-  idempotency keys (see limitations).
+non-idempotent courier is to consult it after uncertainty rather than
+blindly re-POST.
+- **Raw-body HMAC verification** with strict header/lens checks before  
+`timingSafeEqual`.
 
 ## Deliberately left out
 
 - Authentication beyond HMAC on the webhook endpoint (Shopify-style).
 - Persistent courier shipments list would be its own storage in reality; the
-  mock keeps a JSON file for simplicity.
+mock keeps a JSON file for simplicity.
 - Multi-tenant / multi-store support (one secret).
 - Metrics, tracing, TLS, and a production web server config.
 - Migration tooling beyond a single idempotent schema (auto-created).
 
+
+
 ## Known limitations
 
 - **The dashboard/admin API is unauthenticated by design** — it is a local
-  demonstration surface. Never expose the webhook server port publicly
-  without putting the dashboard behind auth (or disabling
-  `mountAdminRoutes`).
+demonstration surface. Never expose the webhook server port publicly
+without putting the dashboard behind auth (or disabling
+`mountAdminRoutes`).
 - **Exactly-once shipment creation is not guaranteed and cannot be**, with a
-  non-idempotent courier: an ambiguous timeout → "no shipment found" →
-  re-create sequence can race with a late first request that the courier
-  accepts afterwards. Mitigations in place: grace window before re-creating,
-  confirm-only-once guards (`status != 'confirmed'`), duplicate
-  detection & flagging, and reconciliation adopting instead of re-posting.
-  The correct fix requires a courier that honors an idempotency key or
-  exposes a "create-or-adopt" call.
+non-idempotent courier: an ambiguous timeout → "no shipment found" →
+re-create sequence can race with a late first request that the courier
+accepts afterwards. Mitigations in place: grace window before re-creating,
+confirm-only-once guards (`status != 'confirmed'`), duplicate
+detection & flagging, and reconciliation adopting instead of re-posting.
+The correct fix requires a courier that honors an idempotency key or
+exposes a "create-or-adopt" call.
 - Lease theft is bounded but possible in clocks-skewed multi-host setups
-  (single-process dev has no such skew).
+(single-process dev has no such skew).
 - The webhook responds only after SQLite persistence (sub-millisecond
-  typically); if the disk stalls, the response is still bound by the
-  WAL write, not any courier clock.
+typically); if the disk stalls, the response is still bound by the
+WAL write, not any courier clock.
 - `data/` and secrets are gitignored; set real values for `SHOPIFY_WEBHOOK_SECRET`
-  in any shared environment.
+in any shared environment.
+

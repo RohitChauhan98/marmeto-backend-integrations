@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { withTransaction, isoNow, newId } from './db.js';
 import {
-  SIGNATURE_HEADER,
-  WEBHOOK_ID_HEADER,
+  extractSignatureHeader,
+  extractWebhookIdHeader,
   verifyWebhookSignature,
   parseAndValidateOrderPayload,
 } from './webhook-verify.js';
@@ -98,15 +98,15 @@ export function buildServer({ config, db }) {
   const rawBodyParser = express.raw({ type: '*/*', limit: '1mb' });
 
   app.post('/webhooks/orders-create', rawBodyParser, async (req, res) => {
-    const signature = req.get(SIGNATURE_HEADER);
+    const signature = extractSignatureHeader(req);
     const valid = verifyWebhookSignature(config.webhookSecret, req.body, signature);
     if (!valid) {
       return res.status(401).json({ error: 'invalid or missing HMAC signature' });
     }
 
-    const webhookId = req.get(WEBHOOK_ID_HEADER);
+    const webhookId = extractWebhookIdHeader(req);
     if (typeof webhookId !== 'string' || webhookId.length === 0 || webhookId.length > 512) {
-      return res.status(400).json({ error: 'missing or invalid X-Shop-Webhook-Id header' });
+      return res.status(400).json({ error: 'missing or invalid webhook id header (X-Shop-Webhook-Id / X-Shopify-Webhook-Id)' });
     }
 
     const parsed = parseAndValidateOrderPayload(req.body);
