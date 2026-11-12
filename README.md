@@ -36,6 +36,13 @@ API — safely, despite duplicates, retries, timeouts, crashes, and restarts.
 - **scripts/reconcile.js** sweeps orders without confirmed shipments and
   recovers them through courier lookups. **scripts/dead-letter.js** inspects
   and safely replays failed jobs.
+- **Operations dashboard (frontend)** — a no-build static HTML/CSS/JS app in
+  `public/` served by the webhook server at `http://localhost:4550/`. It shows
+  live stats (orders, confirmed/uncertain shipments, pending/retrying/dead
+  jobs), lets you fire the four signed-webhook scenarios, switch the mock
+  courier's failure mode at runtime (chaos panel), trigger reconciliation,
+  watch every order's workflow state, and replay dead-lettered jobs with one
+  click.
 
 ## Prerequisites & installation
 
@@ -78,8 +85,29 @@ The database is created and migrated automatically on first use.
 ```bash
 npm run dev
 # spawns: mock-courier (:4600), webhook server (:4550), worker (shared db)
+# dashboard: http://localhost:4550/
 # Ctrl+C tears everything down cleanly
 ```
+
+## Operations dashboard (frontend)
+
+Open `http://localhost:4550/` while `npm run dev` is running. No build step —
+plain `public/index.html` + `public/app.js` + `public/style.css` polling a
+small admin API every 2 seconds:
+
+| UI element | Backing endpoint | What it demonstrates |
+| --- | --- | --- |
+| Health dots | `GET /admin/api/overview` | server + courier reachability, live counters |
+| "Simulate Shopify webhooks" buttons | `POST /admin/api/send-webhook` | the four HMAC scenarios (valid / duplicate / same-order-new-webhook-id / invalid) delivered through the real signed pipeline |
+| Courier chaos buttons | `POST /admin/api/courier/mode` | runtime switching of the mock courier's deterministic failure mode (`error_500`, `rate_limit_429`, `timeout_wait`) without restarting anything |
+| "Run reconciliation now" | `POST /admin/api/reconcile` | the recovery sweep with its printed summary |
+| Orders table | `GET /admin/api/orders` | per-order shipment status, courier shipment id, job state, attempts, next attempt, last error |
+| Dead letters table | `GET /admin/api/dead-letters`, `POST /admin/api/jobs/:id/replay` | inspect and one-click replay (reuses the same workflow row) |
+| Deliveries table | `GET /admin/api/orders` | recent webhook ids accepted |
+
+The courier control plane (`POST /_test/mode`) exists only when the mock
+courier is started with `MOCK_COURIER_CONTROL=1` (set automatically by
+`npm run dev`); the standalone mock and tests are unaffected otherwise.
 
 ## Webhook endpoint and example payload
 
@@ -259,7 +287,7 @@ the worker are safe (verified by tests).
 npm test
 ```
 
-`node:test`, 28 tests, ~1s total, all deterministic: every flow runs against
+`node:test`, 32 tests, ~1s total, all deterministic: every flow runs against
  locally scriptable courier stubs (no randomness, no external network) with
 in-memory databases and small injected timing values. Covered scenarios:
 
@@ -281,6 +309,9 @@ in-memory databases and small injected timing values. Covered scenarios:
 14. worker crash after claim (expired lease) → job recovered, completes once
 15. worker crash mid-POST → ambiguity later resolved via lookup
 16. courier client unit behavior: classification, Retry-After parsing
+17. dashboard API: overview/orders pages, signed send-webhook actions,
+    reconcile action, dead-letter replay over HTTP, courier runtime mode
+    control (dev-only)
 
 (`npm run test` uses the glob `test/**/*.test.js`; helpers live in
 `test/helpers.js`.)
@@ -314,8 +345,8 @@ in-memory databases and small injected timing values. Covered scenarios:
   scaling.
 - Prometheus/OpenTelemetry metrics + structured logs and alerting on
   dead-letter arrivals and `uncertain` backlog age.
-- An admin HTTP surface (list/replay dead letters, per-order state) instead
-  of pure CLI.
+- Authentication and RBAC for the dashboard/admin API (currently a local
+  demo surface), plus an SSE/WebSocket feed instead of polling.
 - Property/chaos tests: random fault sequences, concurrent reconcilers,
   crash-at-every-await fuzzing.
 - A Shopify `/webhooks` topics fan-out layer and subscription management.
@@ -333,6 +364,10 @@ in-memory databases and small injected timing values. Covered scenarios:
 
 ## Known limitations
 
+- **The dashboard/admin API is unauthenticated by design** — it is a local
+  demonstration surface. Never expose the webhook server port publicly
+  without putting the dashboard behind auth (or disabling
+  `mountAdminRoutes`).
 - **Exactly-once shipment creation is not guaranteed and cannot be**, with a
   non-idempotent courier: an ambiguous timeout → "no shipment found" →
   re-create sequence can race with a late first request that the courier

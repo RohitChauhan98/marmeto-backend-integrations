@@ -66,9 +66,26 @@ function parseIntWithDefault(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function createMockCourierApp({ store, globalMode, retryAfterMs, timeoutDelayMs } = {}) {
+export function createMockCourierApp({ store, globalMode, retryAfterMs, timeoutDelayMs, controlEnabled } = {}) {
+  // Runtime failure-mode control (used by the dashboard in dev): when
+  // enabled, POST /_test/mode switches the global deterministic mode.
+  const control = { globalMode: globalMode || '' };
   const app = express();
   app.use(express.json({ type: '*/*' }));
+
+  if (controlEnabled) {
+    app.post('/_test/mode', (req, res) => {
+      const { mode } = req.body || {};
+      if (mode !== '' && !MODES.has(mode)) {
+        return res.status(400).json({ error: `mode must be one of: ${[...MODES, ''].join(' | ')}` });
+      }
+      control.globalMode = mode || '';
+      return res.status(200).json({ mode: control.globalMode || 'probabilistic' });
+    });
+    app.get('/_test/mode', (req, res) => {
+      return res.status(200).json({ mode: control.globalMode || 'probabilistic' });
+    });
+  }
 
   app.post('/shipments', (req, res) => {
     const { reference, address, items } = req.body || {};
@@ -81,7 +98,10 @@ export function createMockCourierApp({ store, globalMode, retryAfterMs, timeoutD
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'items (non-empty array) is required' });
     }
-    const chosen = pickMode({ headers: req.headers, globalMode });
+    const chosen = pickMode({
+      headers: req.headers,
+      globalMode: controlEnabled ? control.globalMode : globalMode,
+    });
     if (chosen.deterministic) {
       res.set('X-Test-Mode', chosen.mode);
     }
@@ -129,6 +149,7 @@ export function main() {
     globalMode: process.env.MOCK_COURIER_MODE || '',
     retryAfterMs: process.env.MOCK_COURIER_RETRY_AFTER_MS,
     timeoutDelayMs: process.env.MOCK_COURIER_TIMEOUT_DELAY_MS,
+    controlEnabled: process.env.MOCK_COURIER_CONTROL === '1',
   });
   const server = app.listen(port, () => {
     if (!process.env.MOCK_COURIER_QUIET) {

@@ -62,7 +62,8 @@ process.on('SIGTERM', () => shutdown(0));
 process.on('SIGHUP', () => shutdown(0));
 
 console.log('[dev] starting mock courier, webhook server, and worker');
-start('mock-courier', ['scripts/mock-courier.js']);
+console.log(`[dev] dashboard: http://localhost:${process.env.WEBHOOK_SERVER_PORT || 4550}/`);
+start('mock-courier', ['scripts/mock-courier.js'], { MOCK_COURIER_CONTROL: '1' });
 // Give the courier a moment to bind before the server/worker hit it.
 setTimeout(() => {
   start('webhook-server', ['src/main.js']);

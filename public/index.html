@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Marmeto Shipment Gateway — Operations Dashboard</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div>
+        <h1>Marmeto Shipment Gateway</h1>
+        <p class="sub">Shopify <code>orders/create</code> webhooks → reliable shipments over an unreliable courier</p>
+      </div>
+    </div>
+    <div class="health" id="health">
+      <span class="dot" id="dot-server"></span> webhook server
+      <span class="dot" id="dot-courier"></span> mock courier
+    </div>
+  </header>
+
+  <main>
+    <!-- Stats row -->
+    <section class="stats" id="stats">
+      <div class="stat"><span id="stat-orders">–</span><label>Orders</label></div>
+      <div class="stat ok"><span id="stat-confirmed">–</span><label>Confirmed</label></div>
+      <div class="stat warn"><span id="stat-uncertain">–</span><label>Uncertain</label></div>
+      <div class="stat info"><span id="stat-pending">–</span><label>Jobs pending</label></div>
+      <div class="stat info"><span id="stat-retrying">–</span><label>Jobs retrying</label></div>
+      <div class="stat bad"><span id="stat-dead">–</span><label>Dead letters</label></div>
+      <div class="stat"><span id="stat-deliveries">–</span><label>Webhook deliveries</label></div>
+    </section>
+
+    <!-- Action bar -->
+    <section class="panel">
+      <h2>Simulate Shopify webhooks</h2>
+      <p class="hint">Each button delivers a real HMAC-signed webhook through the full pipeline (verify → persist → queue → worker → courier).</p>
+      <div class="actions">
+        <button class="btn primary" data-mode="valid">Valid webhook</button>
+        <button class="btn" data-mode="duplicate">Duplicate delivery <small>(same webhook id ×2)</small></button>
+        <button class="btn" data-mode="dup-order">Same order, new webhook id</button>
+        <button class="btn danger" data-mode="invalid">Invalid signature (401)</button>
+      </div>
+      <div class="row">
+        <label class="inline">seed <input id="seed" placeholder="optional deterministic id" /></label>
+        <span id="send-result" class="result"></span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <!-- Courier chaos panel -->
+      <section class="panel">
+        <h2>Courier chaos</h2>
+        <p class="hint">Force the mock courier's failure mode to demo retries, rate limits, and timeout recovery.</p>
+        <div class="actions">
+          <button class="btn mode" data-cmode="">Probabilistic (default)</button>
+          <button class="btn mode" data-cmode="success">Always success</button>
+          <button class="btn mode bad" data-cmode="error_500">Always 500</button>
+          <button class="btn mode warn" data-cmode="rate_limit_429">Always 429</button>
+          <button class="btn mode warn" data-cmode="timeout_wait">Always slow timeout</button>
+        </div>
+        <div class="row"><span id="courier-mode" class="badge">probabilistic</span><span id="courier-result" class="result"></span></div>
+      </section>
+
+      <!-- Reconciliation panel -->
+      <section class="panel">
+        <h2>Recovery</h2>
+        <p class="hint">Sweep every order without a confirmed shipment; recover from courier lookups, reschedule safe retries, preserve uncertain states.</p>
+        <div class="actions">
+          <button class="btn primary" id="btn-reconcile">Run reconciliation now</button>
+        </div>
+        <pre id="reconcile-result" class="console" hidden></pre>
+      </section>
+    </div>
+
+    <!-- Orders table -->
+    <section class="panel">
+      <h2>Orders &amp; shipment workflows</h2>
+      <table id="orders">
+        <thead>
+          <tr><th>Order</th><th>Shipment status</th><th>Courier shipment</th><th>Job</th><th>Attempts</th><th>Next attempt</th><th>Last error</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p class="hint" id="orders-empty" hidden>No orders yet — send a webhook above.</p>
+    </section>
+
+    <!-- Dead letters -->
+    <section class="panel">
+      <h2>Dead letters</h2>
+      <p class="hint">Exhausted workflows. Replay reuses the same coordinated job (never a second shipment workflow).</p>
+      <table id="dead">
+        <thead><tr><th>Job</th><th>Order</th><th>Attempts</th><th>Last error</th><th>Shipment</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="hint" id="dead-empty" hidden>No dead-lettered jobs 🎉</p>
+    </section>
+
+    <!-- Recent deliveries -->
+    <section class="panel">
+      <h2>Recent webhook deliveries</h2>
+      <table id="deliveries">
+        <thead><tr><th>Webhook id</th><th>Order</th><th>Status</th><th>Received</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <footer>
+      <p>Local demo only — admin endpoints are unauthenticated by design (see README limitations). Auto-refresh every 2s.</p>
+    </footer>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
