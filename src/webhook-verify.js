@@ -4,31 +4,6 @@ export const SIGNATURE_HEADER = 'x-shop-hmac-sha256';
 export const WEBHOOK_ID_HEADER = 'x-shop-webhook-id';
 
 /**
-Real Shopify sends `X-Shopify-Hmac-Sha256` / `X-Shopify-Webhook-Id`; the
-assignment spec defines `X-Shop-Hmac-Sha256` / `X-Shop-Webhook-Id`. Both
-spellings are accepted so the service works against an actual Shopify
-development store and the spec's sender.
-*/
-export const SIGNATURE_HEADERS = ['x-shop-hmac-sha256', 'x-shopify-hmac-sha256'];
-export const WEBHOOK_ID_HEADERS = ['x-shop-webhook-id', 'x-shopify-webhook-id'];
-
-export function extractSignatureHeader(req) {
-  for (const name of SIGNATURE_HEADERS) {
-    const value = req.get(name);
-    if (value) return value;
-  }
-  return undefined;
-}
-
-export function extractWebhookIdHeader(req) {
-  for (const name of WEBHOOK_ID_HEADERS) {
-    const value = req.get(name);
-    if (value) return value;
-  }
-  return undefined;
-}
-
-/**
 Verifies a Shopify-style base64 HMAC-SHA256 signature over the exact raw
 request body. Returns true only when both digests exist, have the expected
 32-byte length, and are equal using a constant-time comparison.

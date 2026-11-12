@@ -138,46 +138,6 @@ test('valid signature but invalid JSON or invalid payload gets 4xx and no rows',
   }
 });
 
-test('real Shopify header names (X-Shopify-*) are accepted end to end', async () => {
-  const { db, config } = makeDb();
-  const server = await startTestServer(db, config);
-  try {
-    // Exactly what a Shopify development store sends on orders/create.
-    const body = makeOrderBody(90007);
-    const res = await fetch(`${server.url}/webhooks/orders-create`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-shopify-topic': 'orders/create',
-        'x-shopify-hmac-sha256': signBody(config, body),
-        'x-shopify-webhook-id': 'b3a1f2c4-d5e6-7890-abcd-ef0123456789',
-        'x-shopify-shop-domain': 'test-shop.myshopify.com',
-      },
-      body,
-    });
-    assert.equal(res.status, 200);
-    assert.equal((await res.json()).duplicate, false);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM orders').get().c, 1);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM jobs').get().c, 1);
-
-    // Shopify redelivers the same webhook id -> duplicate ack, no new work.
-    const res2 = await fetch(`${server.url}/webhooks/orders-create`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-shopify-hmac-sha256': signBody(config, body),
-        'x-shopify-webhook-id': 'b3a1f2c4-d5e6-7890-abcd-ef0123456789',
-      },
-      body,
-    });
-    assert.equal((await res2.json()).duplicate, true);
-    assert.equal(db.prepare('SELECT COUNT(*) c FROM jobs').get().c, 1);
-  } finally {
-    await server.close();
-    closeQuietly(db);
-  }
-});
-
 test('duplicate webhook id creates no duplicate work', async () => {
   const { db, config } = makeDb();
   const server = await startTestServer(db, config);

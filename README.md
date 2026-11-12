@@ -148,34 +148,6 @@ exact bytes sent (the service re-serializes nothing). Duplicate deliveries
 Responses: `401` missing/malformed/invalid signature; `400` invalid JSON,
 invalid payload, or missing webhook id; `200` otherwise.
 
-## Testing with a real Shopify store
-
-The service accepts both header spellings — the assignment spec
-(`X-Shop-Hmac-Sha256` / `X-Shop-Webhook-Id`) and real Shopify's
-(`X-Shopify-Hmac-Sha256` / `X-Shopify-Webhook-Id`) — so it can be pointed at
-an actual Shopify development store without changes:
-
-1. Create a free Shopify Partner account and a development store
-   (partners.shopify.com → Stores → Add store → Development store).
-2. Expose your local server with a tunnel:
-   `npx localtunnel --port 4550` (or `ngrok http 4550`) and copy the public
-   HTTPS URL.
-3. In the store admin: **Settings → Notifications → Webhooks → Create
-   webhook**, choose **Order creation**, format **JSON**, and paste
-   `<tunnel-url>/webhooks/orders-create`. After saving, copy the **signing
-   secret** shown for that webhook.
-4. Put the secret in `.env` as `SHOPIFY_WEBHOOK_SECRET=<copied-secret>` and
-   restart `npm run dev`.
-5. Place a test order in the development store (enable test payments /
-   Bogus Gateway). Shopify signs the raw body with that secret; the order
-   appears in the dashboard (`http://localhost:4550/`) and the shipment is
-   created through the courier.
-
-Notes: Shopify retries failed deliveries and may redeliver — both are
-handled by the webhook-id/order-id idempotency. Shopify requires a 2xx
-response within a few seconds; the service always acknowledges immediately
-after persistence, never after courier work.
-
 ## Signed webhook and duplicate-delivery commands
 
 ```bash
