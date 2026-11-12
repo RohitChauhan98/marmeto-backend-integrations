@@ -73,7 +73,7 @@ environment variables with sensible defaults, so a plain `npm run dev` works.
 | `MOCK_COURIER_RETRY_AFTER_MS`   | `2000`                               | Retry-After value sent by the mock on 429                                       |
 | `MOCK_COURIER_TIMEOUT_DELAY_MS` | `10000`                              | response delay in the timeout scenario                                          |
 | `MOCK_COURIER_DATA_PATH`        | `./data/mock-courier-shipments.json` | mock courier persistence                                                        |
-| `SHOPIFY_WEBHOOK_SECRET`        | `dev-secret-change-me`               | HMAC shared secret (set a real one in production)                               |
+| `SHOPIFY_WEBHOOK_SECRET`        | `change-me`                          | HMAC shared secret (set a real one in production)                               |
 | `DATABASE_PATH`                 | `./data/app.db`                      | shared SQLite path (server + worker)                                            |
 | `COURIER_BASE_URL`              | `http://localhost:4600`              | courier API base URL                                                            |
 | `COURIER_TIMEOUT_MS`            | `5000`                               | per-request `AbortController` timeout                                           |
@@ -365,6 +365,24 @@ mock keeps a JSON file for simplicity.
 - Multi-tenant / multi-store support (one secret).
 - Metrics, tracing, TLS, and a production web server config.
 - Migration tooling beyond a single idempotent schema (auto-created).
+
+
+
+## What I'd do next with another day
+
+- **Real broker for the queue** (BullMQ/Redis or SQS): horizontal worker
+  scaling, visibility timeouts independent of the database, and better
+  retry/schedule tooling than the hand-rolled lease loop.
+- **Auth + hardening on the admin/dashboard API** (currently local-only by
+  design), plus a kill switch to disable it outside development.
+- **Observability**: structured logs with correlation ids
+  (webhook id → order id → job id), metrics for courier outcomes and
+  retry budgets, and tracing across the workflow steps.
+- **Courier contract work**: negotiate an idempotency-key header or a
+  create-or-adopt call with the courier so the lookup-vs-late-POST race
+  can be closed instead of merely bounded.
+- **Deployment ergonomics**: docker-compose for a true one-command run
+  (server + worker + mock courier), plus schema migration tooling.
 
 
 
